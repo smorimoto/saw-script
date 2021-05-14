@@ -1579,10 +1579,9 @@ asCryptolTypeValue v =
     SC.VVecType n v2 -> do
       t2 <- asCryptolTypeValue v2
       return (C.tSeq (C.tNum n) t2)
-    SC.VDataType "Prelude.Stream" [v1] ->
-      case v1 of
-        SC.TValue tv -> C.tSeq C.tInf <$> asCryptolTypeValue tv
-        _ -> Nothing
+    SC.VDataType (primName -> "Prelude.Stream") [SC.TValue v1] [] ->
+        C.tSeq C.tInf <$> asCryptolTypeValue v1
+
     SC.VUnitType -> return (C.tTuple [])
     SC.VPairType v1 v2 -> do
       t1 <- asCryptolTypeValue v1
@@ -1595,7 +1594,7 @@ asCryptolTypeValue v =
         -- if we see that the parameter is a Cryptol.Num, it's a
         -- pretty good guess that it originally was a
         -- polymorphic number type.
-        SC.VDataType "Cryptol.Num" [] ->
+        SC.VDataType (primName -> "Cryptol.Num") [] [] ->
           let msg= unwords ["asCryptolTypeValue: can't infer a polymorphic Cryptol"
                            ,"type. Please, make sure all numeric types are"
                            ,"specialized before constructing a typed term."
