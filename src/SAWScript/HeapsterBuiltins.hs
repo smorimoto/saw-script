@@ -850,14 +850,14 @@ heapster_assume_fun_multi _bic _opts henv nm perms_terms_strings =
 
 
 heapster_typecheck_mut_funs :: BuiltinContext -> Options -> HeapsterEnv ->
-                               [(String, String)] -> TopLevel [Some SomeTypedCFG]
+                               [(String, String)] -> TopLevel ()
 heapster_typecheck_mut_funs bic opts henv =
   heapster_typecheck_mut_funs_rename bic opts henv .
   map (\(nm, perms_string) -> (nm, nm, perms_string))
 
 heapster_typecheck_mut_funs_rename ::
   BuiltinContext -> Options -> HeapsterEnv ->
-  [(String, String, String)] -> TopLevel [Some SomeTypedCFG]
+  [(String, String, String)] -> TopLevel ()
 heapster_typecheck_mut_funs_rename _bic _opts henv fn_names_and_perms =
   do let (fst_nm, _, _) = head fn_names_and_perms
      Some (lm :: LLVMModule arch) <- failOnNothing ("Could not find symbol definition: " ++ fst_nm)
@@ -885,11 +885,10 @@ heapster_typecheck_mut_funs_rename _bic _opts henv fn_names_and_perms =
                                   fromString nm) nm_to cfg fun_perm)
      sc <- getSharedContext
      let saw_modname = heapsterEnvSAWModule henv
-     (env', tcfgs) <- liftIO (withKnownNat w $ withLeqProof leq_proof $
-       (tcTranslateAddCFGs @arch sc saw_modname w env endianness some_cfgs_and_perms)
-       :: IO (PermEnv, [SomeTypedCFG (LLVM arch)]))
+     (env', tcfg) <- liftIO (withKnownNat w $ withLeqProof leq_proof $
+       tcTranslateAddCFGs sc saw_modname w env endianness some_cfgs_and_perms)
      liftIO $ writeIORef (heapsterEnvPermEnvRef henv) env'
-     return $ map Some tcfgs
+     liftIO $ writeIORef (heapsterEnvTCFGs henv) tcfg
 
 
 heapster_typecheck_fun :: BuiltinContext -> Options -> HeapsterEnv ->
@@ -955,5 +954,8 @@ heapster_parse_test _bic _opts _some_lm@(Some lm) fn_name perms_string =
 
 heapster_dump_ide_info_for_fun :: BuiltinContext -> Options -> HeapsterEnv -> String -> String -> TopLevel ()
 heapster_dump_ide_info_for_fun bic opts henv fnName perms = do
-  tcfgs <- heapster_typecheck_mut_funs bic opts henv [(fnName, perms)]
-  io $ readIORef (heapsterEnvPermEnvRef henv) >>= HIDE.printIDEInfo fnName tcfgs
+  -- return ()
+  heapster_typecheck_mut_funs bic opts henv [(fnName, perms)]
+  penv <- io $ readIORef (heapsterEnvPermEnvRef henv)
+  tcfgs <- io $ readIORef (heapsterEnvTCFGs henv)
+  io $ HIDE.printIDEInfo fnName penv tcfgs

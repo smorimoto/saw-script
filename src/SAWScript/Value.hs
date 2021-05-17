@@ -107,6 +107,7 @@ import Lang.Crucible.LLVM.ArraySizeProfile
 import           What4.ProgramLoc (ProgramLoc(..))
 
 import Verifier.SAW.Heapster.Permissions
+import Verifier.SAW.Heapster.TypedCrucible (SomeTypedCFG(..))
 
 -- Values ----------------------------------------------------------------------
 
@@ -177,8 +178,9 @@ data HeapsterEnv = HeapsterEnv {
   -- ^ The SAW module containing all our Heapster definitions
   heapsterEnvPermEnvRef :: IORef PermEnv,
   -- ^ The current permissions environment
-  heapsterEnvLLVMModules :: [Some CMSLLVM.LLVMModule]
+  heapsterEnvLLVMModules :: [Some CMSLLVM.LLVMModule],
   -- ^ The list of underlying 'LLVMModule's that we are translating
+  heapsterEnvTCFGs :: IORef [SomeTypedCFG]
   }
 
 showHeapsterEnv :: HeapsterEnv -> String
