@@ -54,6 +54,7 @@ import qualified Verifier.SAW.Utils as Panic (panic)
 import Verifier.SAW.Module
 import Verifier.SAW.SharedTerm
 import Verifier.SAW.TypedAST
+import Verifier.SAW.Prelude.Constants
 
 import Verifier.SAW.Simulator.Value
 
@@ -197,7 +198,26 @@ evalTermF cfg lam recEval tf env =
 
                      |  otherwise -> panic ("evalRecursorApp: could not find info for constructor: " ++ show c)
 
-                   VNat n -> undefined n
+                   -- interpret 0 as the zero constructor
+                   VNat 0
+                     | Just ctor <- findCtorInMap (simModMap cfg) preludeZeroIdent
+                     , Just (elim,elimTy) <- Map.lookup (ctorVarIndex ctor) ps_fs ->
+                       do let recTy = VRecursorType d ps motive motiveTy
+                          lam (ctorIotaTemplate ctor) [(elim,elimTy),(ready rec,recTy)]
+
+                     |  otherwise -> panic ("evalRecursorApp: could not find info for Zero constructor")
+
+                   -- interpret nonzero nat as the succ constructor
+                   VNat n
+                     | Just ctor <- findCtorInMap (simModMap cfg) preludeSuccIdent
+                     , Just (elim,elimTy) <- Map.lookup (ctorVarIndex ctor) ps_fs ->
+                       do let recTy = VRecursorType d ps motive motiveTy
+                          ctorTy <- toTValue <$> lam (ctorType ctor) []
+                          let args = [ ready (VNat (pred n)) ]
+                          allArgs <- processRecArgs ps args ctorTy [(elim,elimTy),(ready rec,recTy)]
+                          lam (ctorIotaTemplate ctor) allArgs
+
+                     |  otherwise -> panic ("evalRecursorApp: could not find info for Succ constructor")
 
                    _ -> panic "evalRecursorApp: expected constructor"
 
