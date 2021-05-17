@@ -196,40 +196,17 @@ evalTermF cfg lam recEval tf env =
           do rec <- recEval rectm
              case rec of
                VRecursor d ps motive motiveTy ps_fs ->
-                 recEval arg >>= \case
-                   VCtorApp c _ps args
-                     | Just ctor <- findCtorInMap (simModMap cfg) (primName c)
-                     , Just (elim,elimTy) <- Map.lookup (primVarIndex c) ps_fs ->
-                       do let recTy = VRecursorType d ps motive motiveTy
-                          ctorTy <- toTValue <$> lam (ctorType ctor) []
-                          allArgs <- processRecArgs ps args ctorTy [(elim,elimTy),(ready rec,recTy)]
-                          lam (ctorIotaTemplate ctor) allArgs
+                 do argv <- recEval arg
+                    case evalConstructor argv of
+                      Just (ctor, args)
+                        | Just (elim,elimTy) <- Map.lookup (ctorVarIndex ctor) ps_fs
+                        -> do let recTy = VRecursorType d ps motive motiveTy
+                              ctorTy <- toTValue <$> lam (ctorType ctor) []
+                              allArgs <- processRecArgs ps args ctorTy [(elim,elimTy),(ready rec,recTy)]
+                              lam (ctorIotaTemplate ctor) allArgs
 
-                     |  otherwise -> panic ("evalRecursorApp: could not find info for constructor: " ++ show c)
-
-                   -- interpret 0 as the zero constructor
-                   VNat 0
-                     | Just ctor <- findCtorInMap (simModMap cfg) preludeZeroIdent
-                     , Just (elim,elimTy) <- Map.lookup (ctorVarIndex ctor) ps_fs ->
-                       do let recTy = VRecursorType d ps motive motiveTy
-                          lam (ctorIotaTemplate ctor) [(elim,elimTy),(ready rec,recTy)]
-
-                     |  otherwise -> panic ("evalRecursorApp: could not find info for Zero constructor")
-
-                   -- interpret nonzero nat as the succ constructor
-                   VNat n
-                     | Just ctor <- findCtorInMap (simModMap cfg) preludeSuccIdent
-                     , Just (elim,elimTy) <- Map.lookup (ctorVarIndex ctor) ps_fs ->
-                       do let recTy = VRecursorType d ps motive motiveTy
-                          ctorTy <- toTValue <$> lam (ctorType ctor) []
-                          let args = [ ready (VNat (pred n)) ]
-                          allArgs <- processRecArgs ps args ctorTy [(elim,elimTy),(ready rec,recTy)]
-                          lam (ctorIotaTemplate ctor) allArgs
-
-                     |  otherwise -> panic ("evalRecursorApp: could not find info for Succ constructor")
-
-                   _ -> panic "evalRecursorApp: expected constructor"
-
+                        | otherwise -> panic ("evalRecursorApp: could not find info for constructor: " ++ show ctor)
+                      Nothing -> panic "evalRecursorApp: expected constructor"
                _ -> panic "evalRecursorApp: expected recursor value"
 
         RecordType elem_tps ->
@@ -244,6 +221,19 @@ evalTermF cfg lam recEval tf env =
         ExtCns ec           -> do ec' <- traverse (fmap toTValue . recEval) ec
                                   simExtCns cfg tf ec'
   where
+    evalConstructor :: Value l -> Maybe (Ctor, [Thunk l])
+    evalConstructor (VCtorApp c _ps args) =
+       do ctor <- findCtorInMap (simModMap cfg) (primName c)
+          Just (ctor, args)
+    evalConstructor (VNat 0) =
+       do ctor <- findCtorInMap (simModMap cfg) preludeZeroIdent
+          Just (ctor, [])
+    evalConstructor (VNat n) =
+       do ctor <- findCtorInMap (simModMap cfg) preludeSuccIdent
+          Just (ctor, [ ready (VNat (pred n)) ])
+    evalConstructor _ =
+       Nothing
+
     recEvalDelay :: Term -> EvalM l (Thunk l)
     recEvalDelay = delay . recEval
 
