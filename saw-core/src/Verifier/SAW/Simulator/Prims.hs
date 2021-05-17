@@ -1267,9 +1267,9 @@ muxValue bp tp0 b = value tp0
     value _ (VNat m)  (VNat n)      | m == n = return $ VNat m
     value _ (VString x) (VString y) | x == y = return $ VString x
 
-    value (VPiType _ _tp tf) (VFun nm f) (VFun _ g) =
+    value (VPiType _ _tp body) (VFun nm f) (VFun _ g) =
         return $ VFun nm $ \a ->
-           do tp' <- tf a
+           do tp' <- applyPiBody body a
               x <- f a
               y <- g a
               value tp' x y

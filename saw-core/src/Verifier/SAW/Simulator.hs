@@ -129,7 +129,16 @@ evalTermF cfg lam recEval tf env =
     Lambda nm tp t          -> do v <- toTValue <$> recEval tp
                                   return $ VFun nm (\x -> lam t ((x,v) : env))
     Pi nm t1 t2             -> do v <- toTValue <$> recEval t1
-                                  return $ TValue $ VPiType nm v (\x -> toTValue <$> lam t2 ((x,v) : env))
+                                  body <-
+                                    if inBitSet 0 (looseVars t2) then
+                                      pure (VDependentPi (\x -> toTValue <$> lam t2 ((x,v) : env)))
+                                    else
+                                      do val <- delay (panic "evalTerF"
+                                                         ["nondependent Pi type forced its value"
+                                                         , showTerm (Unshared tf)])
+                                         VNondependentPi . toTValue <$> lam t2 ((val,v):env)
+                                  return $ TValue $ VPiType nm v body
+
     LocalVar i              -> force (fst (env !! i))
     Constant ec t           -> do ec' <- traverse (fmap toTValue . recEval) ec
                                   maybe (recEval t) id (simConstant cfg tf ec')
@@ -246,11 +255,11 @@ processRecArgs ::
   TValue l ->
   Env l ->
   EvalM l (Env l)
-processRecArgs (p:ps) args (VPiType _ _ f) env =
-  do tp' <- f (ready p)
+processRecArgs (p:ps) args (VPiType _ _ body) env =
+  do tp' <- applyPiBody body (ready p)
      processRecArgs ps args tp' env
-processRecArgs [] (x:xs) (VPiType _ tp f) env =
-  do tp' <- f x
+processRecArgs [] (x:xs) (VPiType _ tp body) env =
+  do tp' <- applyPiBody body x
      processRecArgs [] xs tp' ((x,tp):env)
 processRecArgs [] [] _ env = pure env
 processRecArgs _ _ _ _ = panic "processRegArgs" ["Expected Pi type!"::String]
