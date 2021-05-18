@@ -259,10 +259,12 @@ heapster_init_env _bic _opts mod_str llvm_filename =
      liftIO $ scLoadModule sc (insImport (const True) preludeMod $
                                  emptyModule saw_mod_name)
      perm_env_ref <- liftIO $ newIORef heapster_default_env
+     tcfg_ref <- liftIO $ newIORef []
      return $ HeapsterEnv {
        heapsterEnvSAWModule = saw_mod_name,
        heapsterEnvPermEnvRef = perm_env_ref,
-       heapsterEnvLLVMModules = [llvm_mod]
+       heapsterEnvLLVMModules = [llvm_mod],
+       heapsterEnvTCFGs = tcfg_ref
        }
 
 load_sawcore_from_file :: BuiltinContext -> Options -> String -> TopLevel ()
@@ -279,10 +281,12 @@ heapster_init_env_from_file _bic _opts mod_filename llvm_filename =
      (saw_mod, saw_mod_name) <- readModuleFromFile mod_filename
      liftIO $ tcInsertModule sc saw_mod
      perm_env_ref <- liftIO $ newIORef heapster_default_env
+     tcfg_ref <- liftIO $ newIORef []
      return $ HeapsterEnv {
        heapsterEnvSAWModule = saw_mod_name,
        heapsterEnvPermEnvRef = perm_env_ref,
-       heapsterEnvLLVMModules = [llvm_mod]
+       heapsterEnvLLVMModules = [llvm_mod],
+       heapsterEnvTCFGs = tcfg_ref
        }
 
 heapster_init_env_for_files :: BuiltinContext -> Options -> String -> [String] ->
@@ -293,10 +297,12 @@ heapster_init_env_for_files _bic _opts mod_filename llvm_filenames =
      (saw_mod, saw_mod_name) <- readModuleFromFile mod_filename
      liftIO $ tcInsertModule sc saw_mod
      perm_env_ref <- liftIO $ newIORef heapster_default_env
+     tcfg_ref <- liftIO $ newIORef []
      return $ HeapsterEnv {
        heapsterEnvSAWModule = saw_mod_name,
        heapsterEnvPermEnvRef = perm_env_ref,
-       heapsterEnvLLVMModules = llvm_mods
+       heapsterEnvLLVMModules = llvm_mods,
+       heapsterEnvTCFGs = tcfg_ref
        }
 
 -- | Look up the CFG associated with a symbol name in a Heapster environment
@@ -885,10 +891,10 @@ heapster_typecheck_mut_funs_rename _bic _opts henv fn_names_and_perms =
                                   fromString nm) nm_to cfg fun_perm)
      sc <- getSharedContext
      let saw_modname = heapsterEnvSAWModule henv
-     (env', tcfg) <- liftIO (withKnownNat w $ withLeqProof leq_proof $
+     (env', tcfg :: [SomeTypedCFG (LLVM arch)]) <- liftIO (withKnownNat w $ withLeqProof leq_proof $
        tcTranslateAddCFGs sc saw_modname w env endianness some_cfgs_and_perms)
      liftIO $ writeIORef (heapsterEnvPermEnvRef henv) env'
-     liftIO $ writeIORef (heapsterEnvTCFGs henv) tcfg
+     liftIO $ writeIORef (heapsterEnvTCFGs henv) (map Some tcfg)
 
 
 heapster_typecheck_fun :: BuiltinContext -> Options -> HeapsterEnv ->
@@ -954,7 +960,6 @@ heapster_parse_test _bic _opts _some_lm@(Some lm) fn_name perms_string =
 
 heapster_dump_ide_info_for_fun :: BuiltinContext -> Options -> HeapsterEnv -> String -> String -> TopLevel ()
 heapster_dump_ide_info_for_fun bic opts henv fnName perms = do
-  -- return ()
   heapster_typecheck_mut_funs bic opts henv [(fnName, perms)]
   penv <- io $ readIORef (heapsterEnvPermEnvRef henv)
   tcfgs <- io $ readIORef (heapsterEnvTCFGs henv)

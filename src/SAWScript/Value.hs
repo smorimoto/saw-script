@@ -180,7 +180,7 @@ data HeapsterEnv = HeapsterEnv {
   -- ^ The current permissions environment
   heapsterEnvLLVMModules :: [Some CMSLLVM.LLVMModule],
   -- ^ The list of underlying 'LLVMModule's that we are translating
-  heapsterEnvTCFGs :: IORef [SomeTypedCFG]
+  heapsterEnvTCFGs :: IORef [Some SomeTypedCFG]
   }
 
 showHeapsterEnv :: HeapsterEnv -> String
