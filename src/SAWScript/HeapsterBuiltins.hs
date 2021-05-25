@@ -646,8 +646,12 @@ heapster_define_rust_type _bic _opts henv str =
        Right _ -> fail "LLVM arch width is 0!"
      env <- liftIO $ readIORef (heapsterEnvPermEnvRef henv)
      withKnownNat w $ withLeqProof leq_proof $
-       do Left (SomeNamedShape nsh) <- parseRustTypeString env w str
-          let env' = permEnvAddNamedShape env nsh
+       do NonRecShape nm ctx sh <- parseRustTypeString env w str
+          let nsh = NamedShape { namedShapeName = nm
+                               , namedShapeArgs = ctx
+                               , namedShapeBody = DefinedShapeBody sh
+                               }
+              env' = permEnvAddNamedShape env nsh
           liftIO $ writeIORef (heapsterEnvPermEnvRef henv) env'
 
 -- | Add Heapster type-checking hint for some blocks in a function given by
