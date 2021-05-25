@@ -573,30 +573,45 @@ extract_uninterp2 unints tt =
 
      let f = traverse $ \(ec,vs) ->
                do ectm <- scExtCns sc ec
-                  vs'  <- scTuple sc vs
+                  vs'  <- filterCryTerms sc vs
                   pure (ectm, vs')
      repls' <- io (traverse f repls)
 
-     printOutLnTop Info "====== Replacement values ======"
-     forM_ (zip unints idxs) $ \(nm,idx) ->
-       do printOutLnTop Info ("== Values for " ++ nm ++ " ==")
-          let ls = fromMaybe [] (Map.lookup idx repls')
-          forM_ ls $ \(e,vs) ->
-            do es  <- show_term e
-               vss <- show_term vs
-               printOutLnTop Info (unwords ["output:", es, "inputs:", vss])
-     printOutLnTop Info "====== End Replacement values ======"
+     -- printOutLnTop Info "====== Replacement values ======"
+     -- forM_ (zip unints idxs) $ \(nm,idx) ->
+     --   do printOutLnTop Info ("== Values for " ++ nm ++ " ==")
+     --      let ls = fromMaybe [] (Map.lookup idx repls')
+     --      forM_ ls $ \(e,vs) ->
+     --        do es  <- show_term e
+     --           vss <- show_term vs
+     --           printOutLnTop Info (unwords ["output:", es, "inputs:", vss])
+     -- printOutLnTop Info "====== End Replacement values ======"
 
      replList <- io $
         forM (zip unints idxs) $ \(nm,idx) ->
            do let ls = fromMaybe [] (Map.lookup idx repls')
               xs <- forM ls $ \(e,vs) ->
                       do e'  <- mkTypedTerm sc e
-                         vs' <- mkTypedTerm sc vs
+                         vs' <- tupleTypedTerm sc vs
                          pure (e',vs')
               pure (nm,xs)
 
      pure (tt', replList)
+
+filterCryTerms :: SharedContext -> [Term] -> IO [TypedTerm]
+filterCryTerms sc = loop
+  where
+  loop [] = pure []
+  loop (x:xs) =
+    do tp <- Cryptol.scCryptolType sc =<< scTypeOf sc x
+       case tp of
+         Just (Right cty) ->
+           do let x' = TypedTerm (TypedTermSchema (C.tMono cty)) x
+              xs' <- loop xs
+              pure (x':xs')
+
+         _ -> loop xs
+
 
 beta_reduce_goal :: ProofScript ()
 beta_reduce_goal =
