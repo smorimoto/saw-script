@@ -32,7 +32,6 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Set (Set)
 import qualified Data.Set as Set
-import qualified Data.Text as Text
 import Numeric.Natural
 
 import Verifier.SAW.Prim (BitVector(..))
@@ -61,7 +60,7 @@ extractUninterp ::
 extractUninterp sc m addlPrims ecVals unintSet t =
   do mapref <- newIORef mempty
      cfg <- mfix (\cfg -> Sim.evalGlobal m (Map.union (constMap sc cfg) addlPrims)
-                             (extcns cfg mapref) (uninterpreted cfg mapref) (neutral cfg) primHandler)
+                             (extcns cfg mapref) (uninterpreted cfg mapref) (neutral cfg) (primHandler cfg))
      v <- Sim.evalSharedTerm cfg t
      tv <- evalType cfg =<< scTypeOf sc t
      t' <- readBackValue sc cfg tv v
@@ -89,13 +88,12 @@ extractUninterp sc m addlPrims ecVals unintSet t =
          tyv  <- evalType cfg =<< scTypeOf sc tm
          reflectTerm sc cfg tyv tm
 
-    primHandler pn msg env _tp =
-      fail $ unlines
-        [ "Could not evaluate primitive " ++ show (primName pn)
-        , "On argument " ++ show (length env)
-        , Text.unpack msg
-        ]
-
+    primHandler cfg pn _msg env tp =
+      do pn'  <- traverse (readBackTValue sc cfg) pn
+         args <- reverse <$> traverse (\(x,ty) -> readBackValue sc cfg ty =<< force x) env
+         prim <- scFlatTermF sc (Primitive pn')
+         f    <- foldM (scApply sc) prim args
+         reflectTerm sc cfg tp f
 
 replace ::
   SharedContext ->
@@ -128,7 +126,7 @@ normalizeSharedTerm ::
   IO Term
 normalizeSharedTerm sc m addlPrims ecVals t =
   do cfg <- mfix (\cfg -> Sim.evalGlobal m (Map.union (constMap sc cfg) addlPrims)
-                             (extcns cfg) (const Nothing) (neutral cfg) primHandler)
+                             (extcns cfg) (const Nothing) (neutral cfg) (primHandler cfg))
      v <- Sim.evalSharedTerm cfg t
      tv <- evalType cfg =<< scTypeOf sc t
      readBackValue sc cfg tv v
@@ -148,12 +146,12 @@ normalizeSharedTerm sc m addlPrims ecVals t =
              tm <- scExtCns sc ec'
              reflectTerm sc cfg (ecType ec) tm
 
-    primHandler pn msg env _tp =
-      fail $ unlines
-        [ "Could not evaluate primitive " ++ show (primName pn)
-        , "On argument " ++ show (length env)
-        , Text.unpack msg
-        ]
+    primHandler cfg pn _msg env tp =
+      do pn'  <- traverse (readBackTValue sc cfg) pn
+         args <- reverse <$> traverse (\(x,ty) -> readBackValue sc cfg ty =<< force x) env
+         prim <- scFlatTermF sc (Primitive pn')
+         f    <- foldM (scApply sc) prim args
+         reflectTerm sc cfg tp f
 
 ------------------------------------------------------------
 -- Values
