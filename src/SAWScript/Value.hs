@@ -220,7 +220,7 @@ showsProofResult opts r =
   case r of
     ValidProof _ _ -> showString "Valid"
     InvalidProof _ ts _ -> showString "Invalid: [" . showMulti "" ts
-    UnfinishedProof st  -> showString "Unfinished: " . shows (length (psGoals st)) . showString " goals remaining" 
+    UnfinishedProof st  -> showString "Unfinished: " . shows (length (psGoals st)) . showString " goals remaining"
   where
     opts' = sawPPOpts opts
     showVal t = shows (ppFirstOrderValue opts' t)
@@ -402,6 +402,7 @@ data TopLevelRW =
   , rwCrucibleAssertThenAssume :: Bool
   , rwProfilingFile :: Maybe FilePath
   , rwLaxArith :: Bool
+  , rwLaxPointerOrdering :: Bool
 
   -- FIXME: These might be better split into "simulator hash-consing" and "tactic hash-consing"
   , rwWhat4HashConsing :: Bool
