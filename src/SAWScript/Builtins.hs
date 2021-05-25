@@ -556,28 +556,28 @@ extract_uninterp2 unints tt =
      (tm, repls) <- io (TM.extractUninterp sc mmap mempty mempty unintSet (ttTerm tt))
      tt' <- io (mkTypedTerm sc tm)
 
-     let f = traverse $ \(ec,_vs) ->
+     let f = traverse $ \(ec,vs) ->
                do ectm <- scExtCns sc ec
-                  --vs'  <- scTuple sc vs
-                  pure ectm -- , vs')
+                  vs'  <- scTuple sc vs
+                  pure (ectm, vs')
      repls' <- io (traverse f repls)
 
-     -- printOutLnTop Info "====== Replacement values ======"
-     -- forM_ (zip unints idxs) $ \(nm,idx) ->
-     --   do printOutLnTop Info ("== Values for " ++ nm ++ " ==")
-     --      let ls = fromMaybe [] (Map.lookup idx repls')
-     --      forM_ ls $ \(e,vs) ->
-     --        do es  <- show_term e
-     --           vss <- show_term vs
-     --           printOutLnTop Info (unwords ["output:", es, "inputs:", vss])
-     -- printOutLnTop Info "====== End Replacement values ======"
+     printOutLnTop Info "====== Replacement values ======"
+     forM_ (zip unints idxs) $ \(nm,idx) ->
+       do printOutLnTop Info ("== Values for " ++ nm ++ " ==")
+          let ls = fromMaybe [] (Map.lookup idx repls')
+          forM_ ls $ \(e,vs) ->
+            do es  <- show_term e
+               vss <- show_term vs
+               printOutLnTop Info (unwords ["output:", es, "inputs:", vss])
+     printOutLnTop Info "====== End Replacement values ======"
 
      replList <- io $
         forM (zip unints idxs) $ \(nm,idx) ->
            do let ls = fromMaybe [] (Map.lookup idx repls')
-              xs <- forM ls $ \e -> -- \(e,vs) ->
+              xs <- forM ls $ \(e,vs) ->
                       do e'  <- mkTypedTerm sc e
-                         vs' <- mkTypedTerm sc =<< scUnitValue sc  -- vs
+                         vs' <- mkTypedTerm sc vs
                          pure (e',vs')
               pure (nm,xs)
 
