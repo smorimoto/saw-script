@@ -1213,7 +1213,7 @@ primitives = Map.fromList
   , prim "normalize_term"      "Term -> Term"
     (funVal1 normalize_term)
     Experimental
-    [ "normalize the given term by evaluation" ]
+    [ "Normalize the given term by performing evaluation in SAWCore." ]
 
   , prim "goal_eval"           "ProofScript ()"
     (pureVal (goal_eval []))
