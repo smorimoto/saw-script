@@ -42,7 +42,7 @@ module SAWScript.HeapsterBuiltins
        , heapster_print_fun_trans
        , heapster_export_coq
        , heapster_parse_test
-       , heapster_dump_ide_info_for_fun
+       , heapster_dump_ide_info
        ) where
 
 import Data.Maybe
@@ -958,9 +958,9 @@ heapster_parse_test _bic _opts _some_lm@(Some lm) fn_name perms_string =
                                                 ret perms_string
      liftIO $ putStrLn $ permPrettyString emptyPPInfo fun_perm
 
-heapster_dump_ide_info_for_fun :: BuiltinContext -> Options -> HeapsterEnv -> String -> String -> TopLevel ()
-heapster_dump_ide_info_for_fun bic opts henv fnName perms = do
-  heapster_typecheck_mut_funs bic opts henv [(fnName, perms)]
+heapster_dump_ide_info :: BuiltinContext -> Options -> HeapsterEnv -> String -> TopLevel ()
+heapster_dump_ide_info bic opts henv filename = do
+  -- heapster_typecheck_mut_funs bic opts henv [(fnName, perms)]
   penv <- io $ readIORef (heapsterEnvPermEnvRef henv)
   tcfgs <- io $ readIORef (heapsterEnvTCFGs henv)
-  io $ HIDE.printIDEInfo fnName penv tcfgs
+  io $ HIDE.printIDEInfo penv tcfgs filename
