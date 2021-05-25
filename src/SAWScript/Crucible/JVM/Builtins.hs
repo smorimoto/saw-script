@@ -833,6 +833,7 @@ data JVMSetupError
   | JVMArgNumberWrong Int Int -- number expected, number found
   | JVMReturnUnexpected J.Type -- found
   | JVMReturnTypeMismatch J.Type J.Type -- expected, found
+  | JVMNonValueType TypedTermType
 
 instance X.Exception JVMSetupError where
   toException = topLevelExceptionToException
@@ -931,6 +932,11 @@ instance Show JVMSetupError where
         [ "jvm_return: Return type mismatch"
         , "Expected type: " ++ show expected
         , "Given type: " ++ show found
+        ]
+      JVMNonValueType tp ->
+        unlines
+        [ "Expected term with value type, but got"
+        , show (MS.ppTypedTermType tp)
         ]
 
 -- | Returns Cryptol type of actual type if it is an array or
@@ -1155,7 +1161,9 @@ jvm_array_is ptr val =
        case snd (lookupAllocIndex env ptr') of
          AllocObject cname -> X.throwM $ JVMElemNonArray (J.ClassType cname)
          AllocArray len elTy -> pure (len, elTy)
-     let schema = ttSchema val
+     schema <- case ttType val of
+                 TypedTermSchema sch -> pure sch
+                 tp -> X.throwM (JVMNonValueType tp)
      let checkVal =
            do ty <- Cryptol.isMono schema
               (n, a) <- Cryptol.tIsSeq ty
