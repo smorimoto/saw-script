@@ -908,6 +908,11 @@ primitives = Map.fromList
     [ "Docs TODO!!"
     ]
 
+  , prim "default_term" "Term -> Term"
+    (funVal1 default_typed_term)
+    Experimental
+    [ "Apply Cryptol defaulting rules to the given term." ]
+
   , prim "sbv_uninterpreted"   "String -> Term -> TopLevel Uninterp"
     (pureVal sbvUninterpreted)
     Deprecated
