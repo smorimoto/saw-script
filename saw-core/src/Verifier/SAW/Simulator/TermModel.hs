@@ -196,6 +196,7 @@ readBackTValue sc cfg = loop
     case tv of
       VUnitType -> scUnitType sc
       VBoolType -> scBoolType sc
+      VStringType -> scStringType sc
       VIntType -> scIntegerType sc
       VSort s  -> scSort sc s
       VIntModType m ->
@@ -298,6 +299,7 @@ reflectTerm sc cfg = loop
                       ready <$> reflectTerm sc cfg t tm'
          pure (VVector vs)
 
+    VStringType     -> return (VExtra (VExtraTerm tv tm))
     VRecordType{}   -> return (VExtra (VExtraTerm tv tm))
     VPairType{}     -> return (VExtra (VExtraTerm tv tm))
     VDataType{}     -> return (VExtra (VExtraTerm tv tm))
