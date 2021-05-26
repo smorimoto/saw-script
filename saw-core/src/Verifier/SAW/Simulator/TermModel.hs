@@ -844,6 +844,8 @@ constMap sc cfg = Map.union (Map.fromList localPrims) (Prims.constMap pms)
     , ("Prelude.bvToInt" , bvToIntOp sc cfg)
     , ("Prelude.sbvToInt", sbvToIntOp sc cfg)
 
+    , ("Prelude.error"   , errorOp sc cfg)
+
 {- TODO!
     -- Integers mod n
     , ("Prelude.toIntMod"  , toIntModOp)
@@ -863,6 +865,16 @@ constMap sc cfg = Map.union (Map.fromList localPrims) (Prims.constMap pms)
     , ("Prelude.expByNat", Prims.expByNatOp pms)
     ]
 
+errorOp :: SharedContext -> Sim.SimulatorConfig TermModel -> TmPrim
+errorOp sc cfg =
+  Prims.tvalFun   $ \tv ->
+  Prims.stringFun $ \msg ->
+  Prims.Prim $
+    do ty' <- readBackTValue sc cfg tv
+       err  <- scGlobalDef sc "Prelude.error"
+       msg' <- scString sc msg
+       tm   <- scApplyAll sc err [ty',msg']
+       reflectTerm sc cfg tv tm
 
 -- intToNat : Integer -> Nat;
 intToNatOp :: SharedContext -> TmPrim
