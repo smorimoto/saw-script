@@ -169,24 +169,18 @@ type instance VArray TermModel = TermModelArray
 type instance Extra  TermModel = VExtra
 
 data VExtra
-  = VStream
-       (TValue TermModel) -- element type of the stream
-       Term               -- term representing this stream
-       (Natural -> IO TmValue) -- concrete lookup function
-       (IORef (Map Natural TmValue)) -- cashed values of lookup function
-  | VExtraTerm
+  = VExtraTerm
        (TValue TermModel) -- type of the term
-       Term               -- term value
+       Term               -- term value (closed term!)
 
 instance Show VExtra where
-  show (VStream _ tm _ _) = show tm
   show (VExtraTerm _ tm) = show tm
 
 data TermModelArray =
   TMArray
     (TValue TermModel) Term -- @a@
     (TValue TermModel) Term -- @b@
-    Term -- term of type @Array a b@
+    Term -- term of type @Array a b@ (closed term!)
 
 
 readBackTValue :: SharedContext -> Sim.SimulatorConfig TermModel -> TValue TermModel -> IO Term
@@ -261,7 +255,12 @@ evalType cfg tm =
     TValue tv -> pure tv
     _ -> panic "evalType" ["Expected type value"]
 
-reflectTerm :: SharedContext -> Sim.SimulatorConfig TermModel -> TValue TermModel -> Term -> IO (Value TermModel)
+reflectTerm ::
+  SharedContext ->
+  Sim.SimulatorConfig TermModel ->
+  TValue TermModel ->
+  Term {- ^ closed term to reflect -} ->
+  IO (Value TermModel)
 reflectTerm sc cfg = loop
   where
   loop tv tm = case tv of
@@ -306,7 +305,14 @@ reflectTerm sc cfg = loop
     VRecursorType{} -> return (VExtra (VExtraTerm tv tm))
     VTyTerm{}       -> return (VExtra (VExtraTerm tv tm))
 
-readBackValue :: SharedContext -> Sim.SimulatorConfig TermModel -> TValue TermModel -> Value TermModel -> IO Term
+-- | Given a value, which must have the given type,
+--   reconstruct a closed term rep representing the value.
+readBackValue ::
+  SharedContext ->
+  Sim.SimulatorConfig TermModel ->
+  TValue TermModel ->
+  Value TermModel ->
+  IO Term
 readBackValue sc cfg = loop
   where
     loop _ VUnit = scUnitValue sc
@@ -343,7 +349,6 @@ readBackValue sc cfg = loop
     loop _ (TValue tv) = readBackTValue sc cfg tv
 
     loop _ (VExtra (VExtraTerm _tp tm)) = return tm
-    loop _ (VExtra (VStream _tp tm _fn _cache))  = return tm
 
     loop tv@VPiType{} v@VFun{} =
       do (ecs, tm) <- readBackFuns tv v
@@ -428,7 +433,6 @@ intTerm _ (Left tm) = pure tm
 intTerm sc (Right i) = scIntegerConst sc i
 
 extraTerm :: VExtra -> IO Term
-extraTerm (VStream _tp tm _ _) = pure tm
 extraTerm (VExtraTerm _ tm) = pure tm
 
 unOp ::
@@ -802,9 +806,9 @@ prims sc cfg =
     -- Array operations
   , Prims.bpArrayConstant = \a b v ->
       do v' <- readBackValue sc cfg b v
-         a'   <- readBackTValue sc cfg a
-         b'   <- readBackTValue sc cfg b
-         tm   <- scArrayConstant sc a' b' v'
+         a' <- readBackTValue sc cfg a
+         b' <- readBackTValue sc cfg b
+         tm <- scArrayConstant sc a' b' v'
          pure (TMArray a a' b b' tm)
 
   , Prims.bpArrayLookup = \(TMArray a a' b b' arr) idx ->
@@ -846,20 +850,14 @@ constMap sc cfg = Map.union (Map.fromList localPrims) (Prims.constMap pms)
 
     , ("Prelude.error"   , errorOp sc cfg)
 
-{- TODO!
     -- Integers mod n
-    , ("Prelude.toIntMod"  , toIntModOp)
-    , ("Prelude.fromIntMod", fromIntModOp)
-    , ("Prelude.intModEq"  , intModEqOp)
-    , ("Prelude.intModAdd" , intModBinOp (+))
-    , ("Prelude.intModSub" , intModBinOp (-))
-    , ("Prelude.intModMul" , intModBinOp (*))
-    , ("Prelude.intModNeg" , intModUnOp negate)
-
-    -- Streams
-    , ("Prelude.MkStream", mkStreamOp)
-    , ("Prelude.streamGet", streamGetOp)
--}
+    , ("Prelude.toIntMod"  , toIntModOp sc)
+    , ("Prelude.fromIntMod", fromIntModOp sc)
+    , ("Prelude.intModEq"  , intModEqOp sc)
+    , ("Prelude.intModAdd" , intModAddOp sc)
+    , ("Prelude.intModSub" , intModSubOp sc)
+    , ("Prelude.intModMul" , intModMulOp sc)
+    , ("Prelude.intModNeg" , intModNegOp sc)
 
     -- Miscellaneous
     , ("Prelude.expByNat", Prims.expByNatOp pms)
@@ -974,59 +972,93 @@ bvShiftOp sc cfg szf tmOp bvOp =
            tm   <- tmOp sc n0' w' amt'
            pure (VWord (Left (n, tm)))
 
-{-
 
-------------------------------------------------------------
+toIntModOp ::
+  SharedContext ->
+  TmPrim
+toIntModOp sc =
+  Prims.natFun $ \n ->
+  Prims.intFun $ \x ->
+  Prims.Prim $
+    case x of
+      Left tm ->
+        do n' <- scNat sc n
+           VIntMod n . Left <$> scToIntMod sc n' tm
+      Right i ->
+        pure . VIntMod n . Right $ i `mod` toInteger n
 
-toIntModOp :: CValue
-toIntModOp =
-  Prims.natFun $ \n -> return $
-  Prims.intFun "toIntModOp" $ \x -> return $
-  VIntMod n (x `mod` toInteger n)
+fromIntModOp ::
+  SharedContext ->
+  TmPrim
+fromIntModOp sc =
+  Prims.natFun $ \n ->
+  Prims.intModFun $ \x ->
+  Prims.Prim $
+    case x of
+      -- NB, concrete values are maintained in reduced form
+      Right i -> pure (VInt (Right i))
+      Left tm ->
+        do n' <- scNat sc n
+           VInt . Left <$> scFromIntMod sc n' tm
 
-fromIntModOp :: CValue
-fromIntModOp =
-  constFun $
-  Prims.intModFun "fromIntModOp" $ \x -> pure $
-  VInt x
+intModNegOp :: SharedContext -> TmPrim
+intModNegOp sc =
+  Prims.natFun $ \n ->
+  Prims.intModFun $ \x ->
+  Prims.Prim $
+    case x of
+      Left tm ->
+        do n' <- scNat sc n
+           VIntMod n . Left <$> scIntModNeg sc n' tm
+      Right i -> pure . VIntMod n . Right $! (negate i `mod` toInteger n)
 
-intModEqOp :: CValue
-intModEqOp =
-  constFun $
-  Prims.intModFun "intModEqOp" $ \x -> return $
-  Prims.intModFun "intModEqOp" $ \y -> return $
-  VBool (x == y)
+intModEqOp :: SharedContext -> TmPrim
+intModEqOp sc =
+  Prims.natFun $ \n ->
+  Prims.intModFun $ \x ->
+  Prims.intModFun $ \y ->
+  Prims.Prim
+    (VBool <$> intModBinOp sc scIntModEq (==) n x y)
 
-intModBinOp :: (Integer -> Integer -> Integer) -> CValue
-intModBinOp f =
-  Prims.natFun $ \n -> return $
-  Prims.intModFun "intModBinOp x" $ \x -> return $
-  Prims.intModFun "intModBinOp y" $ \y -> return $
-  VIntMod n (f x y `mod` toInteger n)
+intModAddOp :: SharedContext -> TmPrim
+intModAddOp sc =
+  Prims.natFun $ \n ->
+  Prims.intModFun $ \x ->
+  Prims.intModFun $ \y ->
+  Prims.Prim $
+    let f a b = (a+b) `mod` toInteger n
+     in VIntMod n <$> intModBinOp sc scIntModAdd f n x y
 
-intModUnOp :: (Integer -> Integer) -> CValue
-intModUnOp f =
-  Prims.natFun $ \n -> return $
-  Prims.intModFun "intModUnOp" $ \x -> return $
-  VIntMod n (f x `mod` toInteger n)
+intModSubOp :: SharedContext -> TmPrim
+intModSubOp sc =
+  Prims.natFun $ \n ->
+  Prims.intModFun $ \x ->
+  Prims.intModFun $ \y ->
+  Prims.Prim $
+    let f a b = (a-b) `mod` toInteger n
+     in VIntMod n <$> intModBinOp sc scIntModSub f n x y
 
-------------------------------------------------------------
+intModMulOp :: SharedContext -> TmPrim
+intModMulOp sc =
+  Prims.natFun $ \n ->
+  Prims.intModFun $ \x ->
+  Prims.intModFun $ \y ->
+  Prims.Prim $
+    let f a b = (a*b) `mod` toInteger n
+     in VIntMod n <$> intModBinOp sc scIntModMul f n x y
 
--- MkStream :: (a :: sort 0) -> (Nat -> a) -> Stream a;
-mkStreamOp :: CValue
-mkStreamOp =
-  constFun $
-  pureFun $ \f ->
-  vStream (fmap (\n -> runIdentity (apply f (ready (VNat n)))) IntTrie.identity)
 
--- streamGet :: (a :: sort 0) -> Stream a -> Nat -> a;
-streamGetOp :: CValue
-streamGetOp =
-  constFun $
-  pureFun $ \xs ->
-  strictFun $ \case
-    VNat n -> return $ IntTrie.apply (toStream xs) (toInteger n)
-    VToNat w -> return $ IntTrie.apply (toStream xs) (unsigned (toWord w))
-    n -> Prims.panic "Verifier.SAW.Simulator.Concrete.streamGetOp"
-               ["Expected Nat value", show n]
--}
+intModBinOp ::
+  SharedContext ->
+  (SharedContext -> Term -> Term -> Term -> IO Term) ->
+  (Integer -> Integer -> b) ->
+  Natural -> Either Term Integer -> Either Term Integer -> IO (Either Term b)
+intModBinOp sc termOp valOp n = binOp sc toTerm termOp' valOp
+  where
+    toTerm _ i =
+      do n' <- scNat sc n
+         scToIntMod sc n' =<< scIntegerConst sc i
+
+    termOp' _ x y =
+      do n' <- scNat sc n
+         termOp sc n' x y
