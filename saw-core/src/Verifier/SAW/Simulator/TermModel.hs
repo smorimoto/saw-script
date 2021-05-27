@@ -352,7 +352,7 @@ readBackValue sc cfg = loop
 
     loop tv@VPiType{} v@VFun{} =
       do (ecs, tm) <- readBackFuns tv v
-         scAbstractExts sc ecs tm
+         scAbstractExtsEtaCollapse sc ecs tm
 
     loop (VPairType t1 t2) (VPair v1 v2) =
       do tm1 <- loop t1 =<< force v1
@@ -786,7 +786,7 @@ prims sc cfg =
            Right b -> return (Right b)
            Left  resTm ->
              do n' <- scNat sc n
-                fn <- scAbstractExts sc [ec] resTm
+                fn <- scAbstractExtsEtaCollapse sc [ec] resTm
                 Left <$> scBvForall sc n' fn
 
     -- Integer operations
