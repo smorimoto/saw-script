@@ -891,10 +891,10 @@ heapster_typecheck_mut_funs_rename _bic _opts henv fn_names_and_perms =
                                   fromString nm) nm_to cfg fun_perm)
      sc <- getSharedContext
      let saw_modname = heapsterEnvSAWModule henv
-     (env', tcfg :: [SomeTypedCFG (LLVM arch)]) <- liftIO (withKnownNat w $ withLeqProof leq_proof $
+     (env', tcfgs :: [SomeTypedCFG (LLVM arch)]) <- liftIO (withKnownNat w $ withLeqProof leq_proof $
        tcTranslateAddCFGs sc saw_modname w env endianness some_cfgs_and_perms)
      liftIO $ writeIORef (heapsterEnvPermEnvRef henv) env'
-     liftIO $ writeIORef (heapsterEnvTCFGs henv) (map Some tcfg)
+     liftIO $ modifyIORef (heapsterEnvTCFGs henv) (\old -> map Some tcfgs ++ old)
 
 
 heapster_typecheck_fun :: BuiltinContext -> Options -> HeapsterEnv ->
